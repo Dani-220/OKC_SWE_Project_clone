@@ -1,0 +1,196 @@
+<section class="page">
+  <header class="page-header">
+    <div>
+      <h1>Lineup Explorer</h1>
+      <p class="subtitle">Which combinations win, why they win, and which fit a given opponent.</p>
+    </div>
+  </header>
+
+  <div class="presets" role="group" aria-label="Quick views">
+    @for (preset of presets; track preset.id) {
+      <button
+        type="button"
+        class="preset"
+        [class.active]="activePreset() === preset.id"
+        [matTooltip]="preset.description"
+        (click)="choosePreset(preset)"
+      >
+        {{ preset.label }}
+      </button>
+    }
+  </div>
+
+  <div class="filters">
+    <mat-button-toggle-group
+      aria-label="Lineup size"
+      [value]="lineupSize()"
+      (change)="setLineupSize($event.value)"
+      hideSingleSelectionIndicator
+    >
+      @for (size of lineupSizes; track size.value) {
+        <mat-button-toggle [value]="size.value">{{ size.label }}</mat-button-toggle>
+      }
+    </mat-button-toggle-group>
+
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-field">
+      <mat-label>Team</mat-label>
+      <mat-select [value]="teamId()" (valueChange)="teamId.set($event); onFilterChange()">
+        <mat-option [value]="null">All teams</mat-option>
+        @for (team of meta()?.teams ?? []; track team.team_id) {
+          <mat-option [value]="team.team_id">{{ team.name }}</mat-option>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <mat-form-field appearance="outline" subscriptSizing="dynamic" class="filter-field">
+      <mat-label>Includes player</mat-label>
+      <mat-select [value]="playerId()" (valueChange)="playerId.set($event); onFilterChange()">
+        <mat-option [value]="null">Any player</mat-option>
+        @for (group of playersByTeam(); track group.team.team_id) {
+          <mat-optgroup [label]="group.team.name">
+            @for (player of group.players; track player.player_id) {
+              <mat-option [value]="player.player_id">{{ player.name }}</mat-option>
+            }
+          </mat-optgroup>
+        }
+      </mat-select>
+    </mat-form-field>
+
+    <label class="slider-field">
+      <span>Min. possessions: <strong>{{ minPossessions() }}</strong></span>
+      <mat-slider min="0" max="150" step="5" discrete>
+        <input matSliderThumb [value]="minPossessions()" (valueChange)="minPossessions.set($event); onFilterChange()" />
+      </mat-slider>
+    </label>
+
+    <button type="button" class="reset" (click)="resetFilters()">Reset</button>
+  </div>
+
+  @if (loading()) {
+    <mat-progress-bar mode="indeterminate" />
+  }
+
+  @if (error()) {
+    <div class="error" role="alert">Couldn't load data: {{ error() }}</div>
+  }
+
+  <div class="content" [class.with-detail]="selectedLineup()">
+    <div class="table-wrap">
+      <div class="table-meta">
+        {{ sortedLineups().length }} {{ isPlayerView() ? 'players' : 'lineups' }}
+        @if (meta(); as m) {
+          · League avg: {{ m.league_averages.offensive_rating | number: '1.1-1' }} pts / 100 poss.
+        }
+        · Click a row for the breakdown
+      </div>
+
+      <table
+        class="lineups"
+        matSort
+        [matSortActive]="sort().active"
+        [matSortDirection]="sort().direction"
+        (matSortChange)="sort.set($event)"
+      >
+        <thead>
+          <tr>
+            <th mat-sort-header="lineup" class="col-lineup">{{ isPlayerView() ? 'Player' : 'Lineup' }}</th>
+            <th mat-sort-header="team">Team</th>
+            @if (isPlayerView()) {
+              <th mat-sort-header="age" class="num">Age <span class="demo-tag" matTooltip="Demo scouting data: generated, not from the provided dataset">demo</span></th>
+              <th mat-sort-header="potential" class="num" matTooltip="Potential = scout grade + 2 per year under age 26, capped at 80 (20-80 scale)">
+                Potential <span class="demo-tag">demo</span>
+              </th>
+            }
+            <th mat-sort-header="total_possessions" class="num" matTooltip="Offensive + defensive possessions">Poss</th>
+            <th mat-sort-header="offensive_rating" class="num" matTooltip="Points scored per 100 possessions">ORtg</th>
+            <th mat-sort-header="defensive_rating" class="num" matTooltip="Points allowed per 100 possessions (lower is better)">DRtg</th>
+            <th mat-sort-header="net_rating" class="num" matTooltip="ORtg minus DRtg">Net</th>
+            @if (isPlayerView()) {
+              <th mat-sort-header="on_off_net_rating" class="num" matTooltip="Team net rating with the player on the court minus with the player off it">On/Off</th>
+            }
+            <th mat-sort-header="offensive_efg_pct" class="num" matTooltip="Effective FG%: counts a 3 as 1.5 makes">eFG%</th>
+            <th mat-sort-header="offensive_fg3_pct" class="num" matTooltip="3-point FG%">3P%</th>
+            <th mat-sort-header="offensive_tov_pct" class="num" matTooltip="Turnovers per offensive possession (lower is better)">TOV%</th>
+            <th mat-sort-header="offensive_oreb_pct" class="num" matTooltip="Share of own misses rebounded">OREB%</th>
+            <th mat-sort-header="defensive_dreb_pct" class="num" matTooltip="Share of opponent misses rebounded">DREB%</th>
+            <th mat-sort-header="defensive_fg3_pct" class="num" matTooltip="Opponents' 3-point FG% (lower is better)">Opp 3P%</th>
+            <th mat-sort-header="total_reb_pct" class="num" matTooltip="Share of all available rebounds on both ends">REB%</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (lineup of sortedLineups(); track lineupKey(lineup)) {
+            <tr
+              tabindex="0"
+              [class.selected]="lineupKey(lineup) === selectedKey()"
+              (click)="select(lineup)"
+              (keydown.enter)="select(lineup)"
+            >
+              <td class="col-lineup">
+                @for (player of lineup.players; track player.player_id; let last = $last) {
+                  <span class="player-name">{{ player.name }}</span>{{ last ? '' : ', ' }}
+                }
+              </td>
+              <td class="team">{{ teamName(lineup.team_id) }}</td>
+              @if (isPlayerView()) {
+                @let scouting = playerScouting(lineup);
+                <td class="num">{{ scouting?.age }}</td>
+                <td class="num">
+                  <span class="potential" [matTooltip]="scouting?.potential_tier ?? ''">{{ scouting?.potential }}</span>
+                </td>
+              }
+              <td class="num">{{ lineup.total_possessions }}</td>
+              <td class="num">{{ lineup.offensive_rating | number: '1.1-1' }}</td>
+              <td class="num">{{ lineup.defensive_rating | number: '1.1-1' }}</td>
+              <td class="num">
+                <span [class]="netRatingClass(lineup.net_rating)">
+                  {{ lineup.net_rating > 0 ? '+' : '' }}{{ lineup.net_rating | number: '1.1-1' }}
+                </span>
+              </td>
+              @if (isPlayerView()) {
+                <td class="num">
+                  @if (lineup.on_off_net_rating != null) {
+                    <span [class]="netRatingClass(lineup.on_off_net_rating)">
+                      {{ lineup.on_off_net_rating > 0 ? '+' : '' }}{{ lineup.on_off_net_rating | number: '1.1-1' }}
+                    </span>
+                  } @else {
+                    —
+                  }
+                </td>
+              }
+              <td class="num">{{ lineup.offensive_efg_pct | percent: '1.1-1' }}</td>
+              <td class="num" [matTooltip]="lineup.offensive_fg3_made + ' of ' + lineup.offensive_fg3_attempted">{{ lineup.offensive_fg3_pct | percent: '1.1-1' }}</td>
+              <td class="num">{{ lineup.offensive_tov_pct | percent: '1.1-1' }}</td>
+              <td class="num">{{ lineup.offensive_oreb_pct | percent: '1.1-1' }}</td>
+              <td class="num">{{ lineup.defensive_dreb_pct | percent: '1.1-1' }}</td>
+              <td class="num" [matTooltip]="lineup.defensive_fg3_made + ' of ' + lineup.defensive_fg3_attempted">{{ lineup.defensive_fg3_pct | percent: '1.1-1' }}</td>
+              <td class="num">{{ lineup.total_reb_pct | percent: '1.1-1' }}</td>
+            </tr>
+          } @empty {
+            @if (!loading()) {
+              <tr class="empty">
+                <td colspan="17">No {{ isPlayerView() ? 'players' : 'lineups' }} match these filters. Try lowering the minimum possessions.</td>
+              </tr>
+            }
+          }
+        </tbody>
+      </table>
+    </div>
+
+    @if (selectedLineup(); as lineup) {
+      @if (meta(); as m) {
+        <lineup-detail
+          [lineup]="lineup"
+          [league]="m.league_averages"
+          [playersById]="playersById()"
+          [teamName]="teamName(lineup.team_id)"
+          (closed)="selectedKey.set(null)"
+        />
+      }
+    }
+  </div>
+
+  <p class="footnote">
+    Small samples swing wildly; use the minimum-possessions filter before drawing conclusions.
+    Age and potential are <strong>demo scouting data</strong> generated for illustration; every other number is computed from the provided possession data.
+  </p>
+</section>

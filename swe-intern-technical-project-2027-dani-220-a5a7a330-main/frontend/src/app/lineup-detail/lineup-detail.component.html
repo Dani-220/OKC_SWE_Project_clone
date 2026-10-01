@@ -1,0 +1,80 @@
+<aside class="detail" aria-label="Lineup breakdown">
+  <header>
+    <div>
+      <div class="team">{{ teamName() }}</div>
+      <div class="poss">
+        {{ lineup().total_possessions }} possessions ({{ lineup().offensive_possessions }} off · {{ lineup().defensive_possessions }} def)
+      </div>
+    </div>
+    <button type="button" class="close" aria-label="Close breakdown" (click)="closed.emit()">✕</button>
+  </header>
+
+  <ul class="players">
+    @for (player of players(); track player.player_id) {
+      <li>
+        <span class="name">{{ player.name }}</span>
+        @if (player.scouting; as s) {
+          <span class="scouting" matTooltip="Demo scouting data. Potential = scout grade + 2 per year under 26, capped at 80">
+            Age {{ s.age }} · Potential <strong>{{ s.potential }}</strong> <span class="tier">{{ s.potential_tier }}</span>
+          </span>
+        }
+      </li>
+    }
+  </ul>
+
+  <div class="ratings">
+    <div class="rating">
+      <div class="label">ORtg</div>
+      <div class="value">{{ lineup().offensive_rating | number: '1.1-1' }}</div>
+      <div class="league">Lg {{ league().offensive_rating | number: '1.1-1' }}</div>
+    </div>
+    <div class="rating">
+      <div class="label">DRtg</div>
+      <div class="value">{{ lineup().defensive_rating | number: '1.1-1' }}</div>
+      <div class="league">Lg {{ league().defensive_rating | number: '1.1-1' }}</div>
+    </div>
+    <div class="rating" [class.pos]="lineup().net_rating > 0" [class.neg]="lineup().net_rating < 0">
+      <div class="label">Net</div>
+      <div class="value">{{ lineup().net_rating > 0 ? '+' : '' }}{{ lineup().net_rating | number: '1.1-1' }}</div>
+      <div class="league">per 100 poss.</div>
+    </div>
+  </div>
+
+  @if (lineup().on_off_net_rating != null) {
+    <p class="on-off">
+      Team is <strong>{{ lineup().net_rating > 0 ? '+' : '' }}{{ lineup().net_rating | number: '1.1-1' }}</strong> with this player on the court
+      and <strong>{{ lineup().off_court_net_rating! > 0 ? '+' : '' }}{{ lineup().off_court_net_rating | number: '1.1-1' }}</strong> with them off:
+      an on/off swing of <strong>{{ lineup().on_off_net_rating! > 0 ? '+' : '' }}{{ lineup().on_off_net_rating | number: '1.1-1' }}</strong> per 100.
+    </p>
+  }
+
+  <p class="summary">{{ summary() }}</p>
+
+  <div class="shooting">
+    <span>3P% <strong>{{ lineup().offensive_fg3_pct | percent: '1.1-1' }}</strong> ({{ lineup().offensive_fg3_made }}/{{ lineup().offensive_fg3_attempted }})</span>
+    <span>Opp 3P% <strong>{{ lineup().defensive_fg3_pct | percent: '1.1-1' }}</strong> ({{ lineup().defensive_fg3_made }}/{{ lineup().defensive_fg3_attempted }})</span>
+    <span class="league">Lg {{ league().offensive_fg3_pct | percent: '1.1-1' }}</span>
+  </div>
+
+  @for (group of [{ title: 'Offense', rows: offenseRows() }, { title: 'Defense (what opponents did)', rows: defenseRows() }]; track group.title) {
+    <h3>{{ group.title }}</h3>
+    @for (row of group.rows; track row.factor.key) {
+      <div class="factor">
+        <div class="factor-head">
+          <span>{{ row.factor.label }}</span>
+          <span>
+            <strong>{{ row.value | percent: '1.1-1' }}</strong>
+            <span class="edge" [class]="edgeClass(row.edge)">
+              {{ row.edge >= 0 ? '▲' : '▼' }} {{ (row.edge < 0 ? -row.edge : row.edge) | percent: '1.0-0' }}
+            </span>
+          </span>
+        </div>
+        <div class="bar" [matTooltip]="'League average ' + (row.leagueValue | percent: '1.1-1')">
+          <div class="fill" [class]="edgeClass(row.edge)" [style.width.%]="row.barWidth"></div>
+          <div class="marker" [style.left.%]="row.leagueMarker"></div>
+        </div>
+      </div>
+    }
+  }
+  <p class="legend">Bar = this {{ lineup().players.length === 1 ? 'player on court' : 'lineup' }} · tick = league average · ▲/▼ = better/worse than league</p>
+</aside>
